@@ -1,130 +1,149 @@
-# FinScope
-
 # 🧠💸 FinScope – AI-Powered Investment & Wealth Optimization Hub
 
-FinScope is a full-stack AI-powered personal finance and investment platform designed to help users track their net worth, analyze their portfolio, and receive intelligent, personalized investment insights — all in one secure dashboard.
+FinScope is a **full-stack AI-powered personal finance and investment platform** designed to help users track their net worth, analyze their portfolio, and receive intelligent, personalized investment insights — all in one secure dashboard.
 
-Built to showcase advanced fintech capabilities, applied AI reasoning, and scalable architecture for real-world finance.
+Built to showcase advanced **fintech capabilities**, **applied AI reasoning**, and **scalable architecture** for real-world finance.
 
 ---
 
 ## 🚀 Features
 
 ### 🧠 AI-Powered Insights
-- **Portfolio Summarizer** – GPT-4 interprets your current asset allocation and highlights imbalances.
-- **Spending ↔ Investment Optimizer** – See how past expenses could have impacted your investment growth.
-- **Simulated Returns** – Run simple projections based on savings reallocation or market trends.
-- **Custom Report Generator** – Ask questions like:  
-  _“Why did my portfolio drop this month?”_ or  
-  _“How much interest am I missing by not investing idle cash?”_
+- **Portfolio Summarizer** — GPT-4 interprets your asset allocation and flags imbalances.
+- **Spending ↔ Investment Optimizer** — See how past expenses could have impacted growth.
+- **Simulated Returns** — Run projections based on savings reallocation or market trends.
+- **Custom Report Generator** — Ask questions like:
+  - “Why did my portfolio drop this month?”
+  - “How much interest am I missing by not investing idle cash?”
 
 ### 📈 Real-Time Finance Tracking
-- Sync accounts via **Plaid** or **Teller**
-- Pull in investments via **Alpaca**, **Yodlee**, or **CoinGecko**
-- Visualize portfolio performance and net worth trends
+- Sync accounts via **Plaid** or **Teller**.
+- Pull investments from **Alpaca**, **Yodlee**, or **CoinGecko**.
+- Visualize portfolio performance and net worth trends.
 
-### 🔐 Secure and Scalable Architecture
-- Full **Row-Level Security** with Supabase Auth
-- Real-time vector search using **pgvector** (or FAISS)
-- Containerized backend with **Docker** and **Railway**
-- Deployed frontend on **Vercel**
+### 🔐 Secure & Scalable Architecture
+- **Row-Level Security** with Supabase Auth.
+- Real-time vector search using **pgvector** or FAISS.
+- Containerized backend with **Docker** + **Railway**.
+- Deployed frontend on **Vercel**.
 
 ---
 
-## In Depth Features
-Here’s a feature breakdown you could consider for FinScope — grouped from must-have (MVP) to advanced/AI-driven so you can plan what to implement step by step:
+## 🏗️ Detailed Feature Roadmap
 
-⸻
+### Core (MVP)
+1. **Secure User Accounts & Profiles**
+   - Email/password authentication (JWT or OAuth).
+   - Two-Factor Authentication (2FA).
+   - User preferences for currency and country.
 
-🏗️ Core (MVP) Features
+2. **Net Worth Tracker**
+   - Link accounts or manually enter assets (cash, stocks, crypto, real estate, loans).
+   - Visual net worth dashboard — line & pie charts.
+   - Asset categorization (liquid vs non-liquid).
 
-1. Secure User Accounts & Profiles
-	•	Email/password authentication (JWT or OAuth).
-	•	Two-Factor Authentication (2FA) option.
-	•	User profile with name, currency preference, and country (to localize tax and investment data).
+3. **Portfolio Aggregation & Analytics**
+   - Integrate brokerages / crypto exchanges (Plaid, Binance API, Coinbase, Alpaca).
+   - Real-time portfolio value and allocation (sector, asset class, region).
+   - Historical performance tracking (gain/loss, ROI, dividends).
 
-2. Net Worth Tracker
-	•	Link bank accounts or manually enter assets (cash, stocks, crypto, real estate, loans, credit cards).
-	•	Visual net worth dashboard — graphs over time (line chart, pie breakdown).
-	•	Asset categorization (liquid vs non-liquid).
+4. **Transaction History**
+   - Automated imports or CSV uploads.
+   - Tagging & categorization (salary, rent, subscriptions, investments).
+   - Monthly & quarterly summaries.
 
-3. Portfolio Aggregation & Analytics
-	•	Connect to brokerages / crypto exchanges (Plaid, Binance API, Coinbase, Alpaca).
-	•	Real-time portfolio value and allocation by asset class, sector, or region.
-	•	Historical performance tracking (gain/loss, dividends, ROI).
+---
 
-4. Transaction History
-	•	Automated import or CSV upload of transactions.
-	•	Tagging & categorization (salary, rent, investments, subscriptions).
-	•	Monthly/quarterly summaries.
+### Intelligence & AI Insights
+5. **Investment Health Check**
+   - Risk analysis (volatility, diversification, asset correlation).
+   - AI suggestions for rebalancing based on time horizon & goals.
 
-⸻
+6. **Cash Flow Forecasting**
+   - Predict upcoming expenses and income.
+   - “What if” simulations (e.g., “What if I invest $500 more per month?”).
 
-📊 Intelligence & AI Insights
+7. **Goal-Based Planning**
+   - Set targets (buy a house, retire early, save for a trip).
+   - Auto-calculate required contributions and show progress.
 
-5. Investment Health Check
-	•	AI-driven portfolio risk analysis (volatility, diversification, asset correlation).
-	•	Suggestions for rebalancing based on goals (e.g., risk tolerance, time horizon).
+8. **AI Investment Recommendations**
+   - Natural language queries (“How can I reduce my portfolio risk?”).
+   - Personalized asset suggestions (stocks, ETFs, crypto).
+   - Drift & concentration alerts.
 
-6. Cash Flow Forecasting
-	•	Predictive analytics for upcoming expenses/income.
-	•	Scenario modeling (e.g., “What if I invest $500/month more?”).
+---
 
-7. Goal-Based Planning
-	•	Set financial goals (buy a house, early retirement, vacation fund).
-	•	Automated contribution planning to reach goals faster.
-	•	Progress visualization.
+### Automation & Integrations
+9. **Smart Alerts & Notifications**
+   - Stock target price alerts.
+   - Overspending warnings.
+   - Tax-loss harvesting reminders.
 
-8. AI Investment Recommendations
-	•	Natural language queries (“How can I reduce my portfolio risk?”).
-	•	Personalized stock/ETF/crypto picks based on risk profile.
-	•	Alerts on portfolio drift or high concentration.
+10. **Open Banking & API Integrations**
+    - Plaid / Yodlee for account aggregation.
+    - Brokerage APIs for trades & holdings.
+    - Tax report export (TurboTax/Wealthsimple friendly).
 
-⸻
+11. **Multi-Currency & Localization**
+    - Live FX conversion for global portfolios.
+    - Region-specific tax insights.
 
-⚡ Automation & Integrations
+---
 
-9. Smart Alerts & Notifications
-	•	Investment opportunities (e.g., stock hitting a target price).
-	•	Budget overspending alerts.
-	•	Tax-loss harvesting reminders.
+### Advanced Add-Ons
+12. **AI Chat & Financial Assistant**
+    - Ask “How’s my net worth vs inflation?” or “Should I rebalance?”
+    - Plain-English portfolio explanations.
 
-10. Open Banking & API Integrations
-	•	Plaid / Yodlee for account aggregation.
-	•	Brokerage APIs for real-time trades & holdings.
-	•	Tax optimization integrations (e.g., TurboTax import-ready reports).
+13. **Alternative Investment Tracking**
+    - Real estate, collectibles, private equity.
+    - Valuation APIs (Zillow, NFT pricing oracles).
 
-11. Multi-Currency & Localization
-	•	Real-time FX conversion for global investments.
-	•	Tax implications tailored to user’s region.
+14. **Tax Optimization & Reporting**
+    - Auto capital gains/loss reports.
+    - Tax bracket forecasting.
 
-⸻
+15. **Social & Community Features**
+    - Compare against anonymized peer benchmarks.
+    - Share goals or allocation trends anonymously.
 
-🧩 Advanced Add-Ons
+---
 
-12. AI Chat & Financial Assistant
-	•	Conversational agent that can answer: “How’s my net worth trending vs. inflation?” or “Should I rebalance?”
-	•	Explain portfolio health in plain language.
+## 🌟 Learning & Implementation Roadmap
 
-13. Alternative Investments Tracking
-	•	Real estate, private equity, collectibles (manual or API integrations).
-	•	Valuation tracking (Zillow for property, NFT price oracles, etc.).
+If you’re building **FinScope** to **maximize full-stack skills**:
 
-14. Tax Optimization & Reporting
-	•	Auto-generated capital gains/loss reports.
-	•	Tax bracket forecasting.
+- ✅ **Phase 1 — MVP**: Auth → Net Worth → Portfolio Aggregation → Charts  
+- ✅ **Phase 2 — AI**: Risk analysis, recommendations, chat assistant  
+- ✅ **Phase 3 — Automation**: Smart alerts, cash flow, notifications  
+- ✅ **Phase 4 — Integrations**: Brokerage APIs, tax tools, multi-currency support  
 
-15. Social & Community Features
-	•	Benchmark against anonymized peer data.
-	•	Share goals or portfolio allocation anonymously.
+---
 
-⸻
+## 🛠️ Tech Stack
 
-🌟 Implementation Priorities for Learning
+- **Frontend** — Next.js, React, TailwindCSS  
+- **Backend** — Python FastAPI *(or Node.js alternative)*  
+- **Database** — PostgreSQL + Prisma / SQLAlchemy  
+- **Auth & Security** — Supabase / JWT / OAuth  
+- **AI Layer** — OpenAI API, LangChain, pgvector  
+- **Infra & Deployment** — Docker, Railway, Vercel
 
-If your main goal is to maximize your full-stack learning:
-	•	✅ Start with MVP (Auth → Net Worth → Portfolio Aggregation → Charts).
-	•	✅ Then add AI insights (risk, recommendations, chat).
-	•	✅ Finish with automation & integrations for real-world complexity (Plaid, brokerage APIs, notifications).
+---
 
-Would you like me to make this actionable — e.g., show how to break these features into an incremental roadmap for FinScope (Phase 1 → Phase 4) so you can build and deploy step by step?
+## 🚦 Getting Started
+
+```bash
+# Clone the repo
+git clone https://github.com/<your-username>/finscope.git
+cd finscope
+
+# Install dependencies
+npm install    # or yarn
+
+# Set up environment variables
+cp .env.example .env
+
+# Run the dev server
+npm run dev
