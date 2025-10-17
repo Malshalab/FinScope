@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .routers import users
 from .routers import transactions
+from .routers import goals
+from .db.session import Base, engine
 
 app = FastAPI()
 
@@ -19,8 +21,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Ensure tables exist (basic bootstrap without Alembic)
+Base.metadata.create_all(bind=engine)
+
 app.include_router(users.router, prefix="/users", tags=["users"])
 app.include_router(transactions.router, prefix="/transactions", tags=["transactions"])
+app.include_router(goals.router, prefix="/goals", tags=["goals"])
 
 
 if __name__ == "__main__":

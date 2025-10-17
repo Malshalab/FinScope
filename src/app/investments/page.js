@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import MoneyLineChart from "../../components/layout/MoneyLineChart";
+import { addGoal, getGoals } from "../../api/goals";
 
 const performanceCards = [
   { label: "Portfolio value", value: "$214,560", delta: "+$8,420", tone: "up", context: "vs last month" },
@@ -97,33 +98,6 @@ const scenarios = [
   },
 ];
 
-const goals = [
-  {
-    name: "Buy a house in 8 years",
-    target: "$120,000",
-    progress: 58,
-    contributed: "$69,400 saved",
-    projection: "Forecast $14,200 ahead of schedule",
-    riskAdjustment: "Consider shifting 7% from crypto to bonds 18 months before purchase.",
-  },
-  {
-    name: "Retire with $1M",
-    target: "$1,000,000",
-    progress: 42,
-    contributed: "$420,000 projected",
-    projection: "Currently tracking toward $860,000",
-    riskAdjustment: "Increase 401(k) contributions by 3% or add SCHD for income stability.",
-  },
-  {
-    name: "Fund college plan",
-    target: "$180,000",
-    progress: 36,
-    contributed: "$64,800 saved",
-    projection: "On pace for $152,000",
-    riskAdjustment: "Move 5% of equities into municipal bonds to de-risk tuition timeline.",
-  },
-];
-
 const alerts = [
   {
     title: "Bond allocation below 10%",
@@ -196,6 +170,85 @@ const timelineData = {
   ],
 };
 
+const defaultGoalForm = {
+  name: "",
+  description: "",
+  targetAmount: "",
+  targetDate: "",
+  priority: "3",
+  status: "active",
+};
+
+const goalStatusOptions = ["active", "paused", "achieved", "cancelled"];
+
+const goalStatusTone = {
+  active: "border-emerald-500/40 bg-emerald-500/10 text-emerald-100",
+  paused: "border-amber-500/40 bg-amber-500/10 text-amber-100",
+  achieved: "border-sky-500/40 bg-sky-500/10 text-sky-100",
+  cancelled: "border-rose-500/40 bg-rose-500/10 text-rose-100",
+};
+
+const currencyFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+});
+
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
+function formatCurrency(value) {
+  const amount = typeof value === "string" ? parseFloat(value) : value;
+  if (!Number.isFinite(amount)) {
+    return "—";
+  }
+  return currencyFormatter.format(amount);
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "—";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+  return dateFormatter.format(date);
+}
+
+function computeTimelineProgress(goal) {
+  if (!goal) {
+    return 0;
+  }
+  if (goal.status === "achieved") {
+    return 100;
+  }
+
+  const start = goal.created_at ? new Date(goal.created_at).getTime() : undefined;
+  const end = goal.target_date ? new Date(goal.target_date).getTime() : undefined;
+
+  if (!start || !end || Number.isNaN(start) || Number.isNaN(end) || end <= start) {
+    return 0;
+  }
+
+  const now = Date.now();
+
+  if (now <= start) {
+    return 0;
+  }
+
+  if (now >= end) {
+    return 100;
+  }
+
+  const elapsed = now - start;
+  const duration = end - start;
+  return Math.min(100, Math.max(0, Math.round((elapsed / duration) * 100)));
+}
+
 const news = [
   {
     title: "Fed signals gradual cuts as inflation cools",
@@ -224,6 +277,13 @@ export default function InvestmentsPage() {
   const [selectedScenario, setSelectedScenario] = useState(scenarios[0].key);
   const [selectedTimelineView, setSelectedTimelineView] = useState(timelineViews[0].key);
   const [viewMode, setViewMode] = useState("portfolio");
+  const [goals, setGoals] = useState(() => []);
+  const [isGoalsLoading, setIsGoalsLoading] = useState(true);
+  const [goalsError, setGoalsError] = useState(null);
+  const [isAddGoalOpen, setIsAddGoalOpen] = useState(false);
+  const [isSavingGoal, setIsSavingGoal] = useState(false);
+  const [goalForm, setGoalForm] = useState(() => ({ ...defaultGoalForm }));
+  const [goalFormError, setGoalFormError] = useState(null);
 
   useEffect(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
@@ -233,6 +293,142 @@ export default function InvestmentsPage() {
     }
     setIsCheckingAuth(false);
   }, [router]);
+
+  useEffect(() => {
+    if (isCheckingAuth) {
+      return;
+    }
+
+    let isActive = true;
+    setIsGoalsLoading(true);
+
+    const fetchGoals = async () => {
+      try {
+        const data = await getGoals();
+        if (!isActive) {
+          return;
+        }
+
+        const sortedGoals = [...data].sort(
+          (a, b) => new Date(a.target_date).getTime() - new Date(b.target_date).getTime(),
+        );
+
+        setGoals(sortedGoals);
+        setGoalsError(null);
+      } catch (error) {
+        if (!isActive) {
+          return;
+        }
+        const message =
+          error?.response?.data?.detail ??
+          "We couldn't load your goals. Please try again in a moment.";
+        setGoalsError(message);
+        setGoals([]);
+      } finally {
+        if (isActive) {
+          setIsGoalsLoading(false);
+        }
+      }
+    };
+
+    fetchGoals();
+
+    return () => {
+      isActive = false;
+    };
+  }, [isCheckingAuth]);
+
+  const openAddGoalModal = () => {
+    setGoalForm({ ...defaultGoalForm });
+    setGoalFormError(null);
+    setIsAddGoalOpen(true);
+  };
+
+  const closeAddGoalModal = () => {
+    if (isSavingGoal) {
+      return;
+    }
+    setIsAddGoalOpen(false);
+  };
+
+  const handleGoalFormChange = (field, value) => {
+    setGoalForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleSubmitGoal = async (event) => {
+    event.preventDefault();
+    if (isSavingGoal) {
+      return;
+    }
+
+    const trimmedName = goalForm.name.trim();
+    const amountValue = Number.parseFloat(goalForm.targetAmount);
+    const priorityValue = Number.parseInt(goalForm.priority, 10);
+    const targetDateValue = goalForm.targetDate;
+
+    if (!trimmedName) {
+      setGoalFormError("Please add a goal name.");
+      return;
+    }
+
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      setGoalFormError("Target amount must be a positive number.");
+      return;
+    }
+
+    if (!targetDateValue) {
+      setGoalFormError("Please choose a target date.");
+      return;
+    }
+
+    if (!Number.isFinite(priorityValue) || priorityValue < 1 || priorityValue > 5) {
+      setGoalFormError("Priority must be between 1 and 5.");
+      return;
+    }
+
+    const isoTargetDate = `${targetDateValue}T00:00:00Z`;
+    const targetDate = new Date(isoTargetDate);
+
+    if (Number.isNaN(targetDate.getTime())) {
+      setGoalFormError("Target date is invalid.");
+      return;
+    }
+
+    setIsSavingGoal(true);
+    setGoalFormError(null);
+
+    const descriptionText = (goalForm.description ?? "").trim();
+
+    const payload = {
+      name: trimmedName,
+      description: descriptionText ? descriptionText : null,
+      target_amount: Math.round(amountValue * 100) / 100,
+      target_date: targetDate.toISOString(),
+      priority: priorityValue,
+      status: goalForm.status,
+    };
+
+    try {
+      const newGoal = await addGoal(payload);
+      setGoals((prev) =>
+        [...prev, newGoal].sort(
+          (a, b) => new Date(a.target_date).getTime() - new Date(b.target_date).getTime(),
+        ),
+      );
+      setIsAddGoalOpen(false);
+      setGoalForm({ ...defaultGoalForm });
+    } catch (error) {
+      const message =
+        error?.response?.data?.detail ??
+        "We couldn't save your goal. Please try again.";
+      setGoalFormError(message);
+    } finally {
+      setIsSavingGoal(false);
+    }
+  };
 
   const timeframeOptions = useMemo(() => ["1D", "1W", "1M", "3M", "1Y", "5Y"], []);
   const activeScenario = useMemo(() => scenarios.find((scenario) => scenario.key === selectedScenario) ?? scenarios[0], [selectedScenario]);
@@ -426,86 +622,183 @@ export default function InvestmentsPage() {
             </div>
           </article>
         </section>
-
-        <section className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-          <article className="rounded-3xl border border-slate-900/70 bg-slate-950/80 p-6 shadow-lg shadow-blue-900/25">
-            <header className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-semibold text-white">Portfolio simulation lab</h3>
-                <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Model what-if scenarios</p>
+        <section className="rounded-3xl border border-slate-900/70 bg-slate-950/80 p-6 shadow-lg shadow-blue-900/20">
+          <header className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-white">Goal-based investing</h3>
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Track outcomes vs. ambition</p>
+            </div>
+            <button
+              type="button"
+              onClick={openAddGoalModal}
+              className="rounded-full border border-slate-900/60 bg-slate-950/60 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-300 transition hover:border-emerald-500/40 hover:text-white"
+            >
+              Add goal
+            </button>
+          </header>
+          <div className="mt-6">
+            {isGoalsLoading ? (
+              <div className="rounded-2xl border border-slate-900/60 bg-slate-950/70 px-4 py-6 text-xs uppercase tracking-[0.3em] text-slate-500">
+                Loading goals…
               </div>
-              <button className="rounded-full border border-slate-900/60 bg-slate-950/60 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-300 transition hover:border-blue-500/40 hover:text-white">
-                View assumptions
-              </button>
-            </header>
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              {scenarios.map((scenario) => {
-                const active = scenario.key === selectedScenario;
-                return (
-                  <button
-                    key={scenario.key}
-                    type="button"
-                    onClick={() => setSelectedScenario(scenario.key)}
-                    className={`rounded-2xl border p-4 text-left text-sm transition ${
-                      active
-                        ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-100 shadow shadow-emerald-500/20"
-                        : "border-slate-900/60 bg-slate-950/60 text-slate-300 hover:border-emerald-500/30 hover:text-white"
+            ) : goalsError ? (
+              <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-5 text-sm text-rose-200">
+                {goalsError}
+              </div>
+            ) : goals.length === 0 ? (
+              <div className="rounded-2xl border border-slate-900/60 bg-slate-950/70 px-4 py-6 text-sm text-slate-400">
+                <p className="font-medium text-slate-200">No goals yet</p>
+                <p className="mt-2 text-xs uppercase tracking-[0.3em]">
+                  Add your first goal to start tracking your investment milestones.
+                </p>
+              </div>
+            ) : (
+              <ul className="space-y-4 text-sm text-slate-300">
+                {goals.map((goal) => {
+                  const timelineProgress = computeTimelineProgress(goal);
+                  const statusClass =
+                    goalStatusTone[goal.status] ?? "border-slate-900/60 bg-slate-950/60 text-slate-200";
+                  const statusLabel = goal.status ? goal.status.toUpperCase() : "ACTIVE";
+
+                  return (
+                    <li
+                      key={goal.id}
+                      className="rounded-2xl border border-slate-900/60 bg-gradient-to-br from-slate-950/85 to-slate-900/65 px-4 py-4"
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-white">{goal.name}</p>
+                          <p className="text-xs uppercase tracking-[0.3em] text-slate-500">
+                            Target {formatCurrency(goal.target_amount)}
+                          </p>
+                          <p className="mt-2 text-xs text-slate-400">
+                            Due by <span className="text-slate-200">{formatDate(goal.target_date)}</span>
+                          </p>
+                          {goal.description ? (
+                            <p className="mt-3 text-xs text-slate-400">{goal.description}</p>
+                          ) : null}
+                        </div>
+                        <div className="flex flex-col items-start gap-2 text-xs text-slate-400 sm:items-end">
+                          <span
+                            className={`rounded-full border px-3 py-1 font-semibold uppercase tracking-[0.3em] ${statusClass}`}
+                          >
+                            {statusLabel}
+                          </span>
+                          <span className="rounded-full border border-slate-900/60 bg-slate-950/50 px-3 py-1 font-semibold uppercase tracking-[0.3em] text-slate-300">
+                            Priority {goal.priority}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="mt-4 h-2 rounded-full bg-slate-900/60">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-blue-500"
+                          style={{ width: `${timelineProgress}%` }}
+                        />
+                      </div>
+                      <p className="mt-2 text-xs uppercase tracking-[0.3em] text-slate-500">
+                        {timelineProgress}% of timeline elapsed
+                      </p>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </section>
+
+      <section className="grid gap-6 lg:grid-cols-2">
+        {/* Asset Allocation */}
+        <article className="rounded-3xl border border-slate-900/70 bg-slate-950/80 p-6 shadow-lg shadow-blue-900/20">
+          <header className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-white">Asset allocation</h3>
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Balanced risk profile</p>
+            </div>
+            <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-100">
+              Target 60/40
+            </span>
+          </header>
+          <ul className="mt-6 space-y-4 text-sm text-slate-300">
+            {allocation.map((bucket) => (
+              <li key={bucket.label}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className={`h-2 w-2 rounded-full ${bucket.accent}`} />
+                    <div className="flex flex-col">
+                      <span className="font-medium text-white">{bucket.label}</span>
+                      <span className="text-[11px] uppercase tracking-[0.3em] text-slate-500">
+                        {bucket.percent}% allocation
+                      </span>
+                    </div>
+                  </div>
+                  <span className="font-semibold text-white">{bucket.amount}</span>
+                </div>
+                <div className="mt-3 h-2 rounded-full bg-slate-900/60">
+                  <div
+                    className={`h-full rounded-full ${bucket.accent}`}
+                    style={{ width: `${bucket.percent}%` }}
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+          <footer className="mt-6 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+            <span>
+              Drift vs. target: <span className="text-emerald-300">+1.8%</span>
+            </span>
+            <button className="rounded-full border border-slate-900/60 bg-slate-950/60 px-3 py-1 font-semibold uppercase tracking-[0.3em] text-slate-300 transition hover:border-emerald-500/40 hover:text-white">
+              Rebalance
+            </button>
+          </footer>
+        </article>
+
+        {/* Watchlist */}
+        <article className="rounded-3xl border border-slate-900/70 bg-slate-950/80 p-6 shadow-lg shadow-blue-900/20">
+          <header className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-white">Watchlist</h3>
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Real-time ideas to consider</p>
+            </div>
+            <button className="rounded-full border border-slate-900/60 bg-slate-950/60 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-300 transition hover:border-emerald-500/40 hover:text-white">
+              Manage
+            </button>
+          </header>
+          <ul className="mt-6 space-y-3 text-sm text-slate-300">
+            {watchlist.map((item) => (
+              <li
+                key={item.symbol}
+                className="flex items-center justify-between rounded-2xl border border-slate-900/60 bg-slate-950/60 px-4 py-3"
+              >
+                <div>
+                  <p className="font-semibold text-white">{item.symbol}</p>
+                  <p className="text-xs text-slate-500">{item.name}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-semibold text-white">{item.price}</p>
+                  <p
+                    className={`text-xs ${
+                      item.change.startsWith("-") ? "text-rose-300" : "text-emerald-300"
                     }`}
                   >
-                    <p className="text-xs uppercase tracking-[0.3em] text-slate-500">{scenario.title}</p>
-                    <p className="mt-2 text-xs">{scenario.description}</p>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="mt-6 grid gap-4 rounded-2xl border border-slate-900/60 bg-gradient-to-br from-slate-950/85 to-slate-900/70 p-4 text-sm text-slate-300 md:grid-cols-3">
-              {activeScenario.stats.map((stat) => (
-                <div key={stat.label}>
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-500">{stat.label}</p>
-                  <p className="mt-1 text-lg font-semibold text-white">{stat.value}</p>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 rounded-2xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 text-xs text-blue-100">
-              {activeScenario.aiInsight}
-            </div>
-          </article>
-
-          <article className="rounded-3xl border border-slate-900/70 bg-slate-950/80 p-6 shadow-lg shadow-emerald-900/20">
-            <header className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-white">Goal-based investing</h3>
-                <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Track outcomes vs. ambition</p>
-              </div>
-              <button className="rounded-full border border-slate-900/60 bg-slate-950/60 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-300 transition hover:border-emerald-500/40 hover:text-white">
-                Add goal
-              </button>
-            </header>
-            <ul className="mt-6 space-y-4 text-sm text-slate-300">
-              {goals.map((goal) => (
-                <li key={goal.name} className="rounded-2xl border border-slate-900/60 bg-gradient-to-br from-slate-950/85 to-slate-900/65 px-4 py-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-white">{goal.name}</p>
-                      <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Target {goal.target}</p>
-                      <p className="mt-2 text-xs text-slate-400">{goal.projection}</p>
-                    </div>
-                    <div className="text-xs text-slate-400">
-                      <p>{goal.contributed}</p>
-                      <p className="mt-1 text-emerald-200">{goal.riskAdjustment}</p>
-                    </div>
-                  </div>
-                  <div className="mt-4 h-2 rounded-full bg-slate-900/60">
-                    <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-blue-500" style={{ width: `${goal.progress}%` }} />
-                  </div>
-                  <p className="mt-2 text-xs uppercase tracking-[0.3em] text-slate-500">
-                    {goal.progress}% funded
+                    {item.change}
                   </p>
-                </li>
-              ))}
-            </ul>
-          </article>
-        </section>
+                </div>
+                <span
+                  className={`rounded-full px-3 py-1 text-[10px] uppercase tracking-[0.3em] ${
+                    item.sentiment === "bullish"
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
+                      : item.sentiment === "watch"
+                      ? "border-amber-500/30 bg-amber-500/10 text-amber-100"
+                      : "border-slate-800 text-slate-300"
+                  }`}
+                >
+                  {item.sentiment}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </article>
+      </section>
 
         <section className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
           <article className="rounded-3xl border border-slate-900/70 bg-slate-950/80 p-6 shadow-lg shadow-purple-900/20">
@@ -573,184 +866,141 @@ export default function InvestmentsPage() {
           </article>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,2.2fr)_minmax(0,3fr)]">
-          <article className="rounded-3xl border border-slate-900/70 bg-slate-950/80 p-6 shadow-lg shadow-blue-900/20">
-            <header className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-semibold text-white">Historical performance timeline</h3>
-                <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Cumulative returns & monthly P&L</p>
-              </div>
-              <div className="flex items-center gap-2 rounded-full border border-slate-900/60 bg-slate-950/60 px-2 py-1 text-xs text-slate-300">
-                {timelineViews.map((view) => {
-                  const active = view.key === selectedTimelineView;
-                  return (
-                    <button
-                      key={view.key}
-                      type="button"
-                      onClick={() => setSelectedTimelineView(view.key)}
-                      className={`rounded-full px-3 py-1 font-semibold transition ${
-                        active
-                          ? "bg-gradient-to-r from-emerald-500 to-blue-500 text-white shadow shadow-blue-500/20"
-                          : "text-slate-400 hover:text-white"
-                      }`}
-                    >
-                      {view.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </header>
-            <div className="mt-6 overflow-hidden rounded-2xl border border-slate-900/60 bg-gradient-to-br from-slate-950/90 to-slate-900/70">
-              <MoneyLineChart />
-            </div>
-            <ul className="mt-4 grid gap-3 text-xs text-slate-400 sm:grid-cols-2 lg:grid-cols-3">
-              {timelineEntries.map((entry) => (
-                <li key={entry.month} className="rounded-xl border border-slate-900/60 bg-gradient-to-br from-slate-950/85 to-slate-900/65 px-3 py-3">
-                  <p className="uppercase tracking-[0.3em] text-slate-500">{entry.month}</p>
-                  <p className="mt-1 text-sm font-semibold text-white">{entry.value}</p>
-                </li>
-              ))}
-            </ul>
-          </article>
-
-          <div className="space-y-6">
-            <article className="rounded-3xl border border-slate-900/70 bg-slate-950/80 p-6 shadow-lg shadow-blue-900/20">
-              <header className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-white">Asset allocation</h3>
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Balanced risk profile</p>
-                </div>
-                <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-100">
-                  Target 60/40
+  
+<section className="grid gap-6 xl:grid-cols-2">
+  {/* Asset allocation */}
+  <article className="rounded-3xl border border-slate-900/70 bg-slate-950/80 p-6 shadow-lg shadow-blue-900/20">
+    <header className="flex items-center justify-between">
+      <div>
+        <h3 className="text-lg font-semibold text-white">Asset allocation</h3>
+        <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Balanced risk profile</p>
+      </div>
+      <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-100">
+        Target 60/40
+      </span>
+    </header>
+    <ul className="mt-6 space-y-4 text-sm text-slate-300">
+      {allocation.map((bucket) => (
+        <li key={bucket.label}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className={`h-2 w-2 rounded-full ${bucket.accent}`} />
+              <div className="flex flex-col">
+                <span className="font-medium text-white">{bucket.label}</span>
+                <span className="text-[11px] uppercase tracking-[0.3em] text-slate-500">
+                  {bucket.percent}% allocation
                 </span>
-              </header>
-              <ul className="mt-6 space-y-4 text-sm text-slate-300">
-                {allocation.map((bucket) => (
-                  <li key={bucket.label}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <span className={`h-2 w-2 rounded-full ${bucket.accent}`} />
-                        <div className="flex flex-col">
-                          <span className="font-medium text-white">{bucket.label}</span>
-                          <span className="text-[11px] uppercase tracking-[0.3em] text-slate-500">{bucket.percent}% allocation</span>
-                        </div>
-                      </div>
-                      <span className="font-semibold text-white">{bucket.amount}</span>
-                    </div>
-                    <div className="mt-3 h-2 rounded-full bg-slate-900/60">
-                      <div className={`h-full rounded-full ${bucket.accent}`} style={{ width: `${bucket.percent}%` }} />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-              <footer className="mt-6 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
-                <span>Drift vs. target: <span className="text-emerald-300">+1.8%</span></span>
-                <button className="rounded-full border border-slate-900/60 bg-slate-950/60 px-3 py-1 font-semibold uppercase tracking-[0.3em] text-slate-300 transition hover:border-emerald-500/40 hover:text-white">
-                  Rebalance
-                </button>
-              </footer>
-            </article>
-
-            <article className="rounded-3xl border border-slate-900/70 bg-slate-950/80 p-6 shadow-lg shadow-blue-900/20">
-              <header className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-white">Watchlist</h3>
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Real-time ideas to consider</p>
-                </div>
-                <button className="rounded-full border border-slate-900/60 bg-slate-950/60 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-300 transition hover:border-emerald-500/40 hover:text-white">
-                  Manage
-                </button>
-              </header>
-              <ul className="mt-6 space-y-3 text-sm text-slate-300">
-                {watchlist.map((item) => (
-                  <li
-                    key={item.symbol}
-                    className="flex items-center justify-between rounded-2xl border border-slate-900/60 bg-slate-950/60 px-4 py-3"
-                  >
-                    <div>
-                      <p className="font-semibold text-white">{item.symbol}</p>
-                      <p className="text-xs text-slate-500">{item.name}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-white">{item.price}</p>
-                      <p
-                        className={`text-xs ${
-                          item.change.startsWith("-") ? "text-rose-300" : "text-emerald-300"
-                        }`}
-                      >
-                        {item.change}
-                      </p>
-                    </div>
-                    <span
-                      className={`rounded-full px-3 py-1 text-[10px] uppercase tracking-[0.3em] ${
-                        item.sentiment === "bullish"
-                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
-                          : item.sentiment === "watch"
-                          ? "border-amber-500/30 bg-amber-500/10 text-amber-100"
-                          : "border-slate-800 text-slate-300"
-                      }`}
-                    >
-                      {item.sentiment}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </article>
-
-            <article className="rounded-3xl border border-slate-900/70 bg-slate-950/80 p-6 shadow-lg shadow-blue-900/20">
-              <header className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-white">Top holdings</h3>
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Sorted by portfolio weight</p>
-                </div>
-                <button className="rounded-full border border-slate-900/60 bg-slate-950/60 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-300 transition hover:border-blue-500/40 hover:text-white">
-                  Export CSV
-                </button>
-              </header>
-              <div className="mt-6 overflow-hidden rounded-2xl border border-slate-900/60 bg-slate-950/60">
-                <table className="min-w-full divide-y divide-slate-900/60 text-sm text-slate-300">
-                  <thead className="uppercase tracking-[0.35em] text-slate-500">
-                    <tr>
-                      <th className="px-4 py-3 text-left">Holding</th>
-                      <th className="px-4 py-3 text-right">Price</th>
-                      <th className="px-4 py-3 text-right">Daily</th>
-                      <th className="px-4 py-3 text-right">Allocation</th>
-                      <th className="px-4 py-3 text-right">P/L</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-900/60">
-                    {holdings.map((holding) => (
-                      <tr key={holding.symbol}>
-                        <td className="whitespace-nowrap px-4 py-3">
-                          <div className="flex flex-col">
-                            <span className="font-semibold text-white">{holding.symbol}</span>
-                            <span className="text-xs text-slate-500">{holding.name}</span>
-                          </div>
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right">{holding.price}</td>
-                        <td
-                          className={`whitespace-nowrap px-4 py-3 text-right font-semibold ${
-                            holding.change.startsWith("-") ? "text-rose-300" : "text-emerald-300"
-                          }`}
-                        >
-                          {holding.change}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right">{holding.allocation}</td>
-                        <td
-                          className={`whitespace-nowrap px-4 py-3 text-right font-semibold ${
-                            holding.pnl.startsWith("-") ? "text-rose-300" : "text-emerald-300"
-                          }`}
-                        >
-                          {holding.pnl}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
               </div>
-            </article>
+            </div>
+            <span className="font-semibold text-white">{bucket.amount}</span>
           </div>
-        </section>
+          <div className="mt-3 h-2 rounded-full bg-slate-900/60">
+            <div className={`h-full rounded-full ${bucket.accent}`} style={{ width: `${bucket.percent}%` }} />
+          </div>
+        </li>
+      ))}
+    </ul>
+    <footer className="mt-6 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+      <span>Drift vs. target: <span className="text-emerald-300">+1.8%</span></span>
+      <button className="rounded-full border border-slate-900/60 bg-slate-950/60 px-3 py-1 font-semibold uppercase tracking-[0.3em] text-slate-300 transition hover:border-emerald-500/40 hover:text-white">
+        Rebalance
+      </button>
+    </footer>
+  </article>
+
+  {/* Watchlist */}
+  <article className="rounded-3xl border border-slate-900/70 bg-slate-950/80 p-6 shadow-lg shadow-blue-900/20">
+    <header className="flex items-center justify-between">
+      <div>
+        <h3 className="text-lg font-semibold text-white">Watchlist</h3>
+        <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Real-time ideas to consider</p>
+      </div>
+      <button className="rounded-full border border-slate-900/60 bg-slate-950/60 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-300 transition hover:border-emerald-500/40 hover:text-white">
+        Manage
+      </button>
+    </header>
+    <ul className="mt-6 space-y-3 text-sm text-slate-300">
+      {watchlist.map((item) => (
+        <li
+          key={item.symbol}
+          className="flex items-center justify-between rounded-2xl border border-slate-900/60 bg-slate-950/60 px-4 py-3"
+        >
+          <div>
+            <p className="font-semibold text-white">{item.symbol}</p>
+            <p className="text-xs text-slate-500">{item.name}</p>
+          </div>
+          <div className="text-right">
+            <p className="font-semibold text-white">{item.price}</p>
+            <p className={`text-xs ${item.change.startsWith("-") ? "text-rose-300" : "text-emerald-300"}`}>
+              {item.change}
+            </p>
+          </div>
+          <span
+            className={`rounded-full px-3 py-1 text-[10px] uppercase tracking-[0.3em] ${
+              item.sentiment === "bullish"
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
+                : item.sentiment === "watch"
+                ? "border-amber-500/30 bg-amber-500/10 text-amber-100"
+                : "border-slate-800 text-slate-300"
+            }`}
+          >
+            {item.sentiment}
+          </span>
+        </li>
+      ))}
+    </ul>
+  </article>
+
+  {/* Top holdings spans full width under both */}
+  <article className="xl:col-span-2 rounded-3xl border border-slate-900/70 bg-slate-950/80 p-6 shadow-lg shadow-blue-900/20">
+    <header className="flex items-center justify-between">
+      <div>
+        <h3 className="text-lg font-semibold text-white">Top holdings</h3>
+        <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Sorted by portfolio weight</p>
+      </div>
+      <button className="rounded-full border border-slate-900/60 bg-slate-950/60 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-300 transition hover:border-blue-500/40 hover:text-white">
+        Export CSV
+      </button>
+    </header>
+    <div className="mt-6 overflow-hidden rounded-2xl border border-slate-900/60 bg-slate-950/60">
+      <table className="min-w-full divide-y divide-slate-900/60 text-sm text-slate-300">
+        <thead className="uppercase tracking-[0.35em] text-slate-500">
+          <tr>
+            <th className="px-4 py-3 text-left">Holding</th>
+            <th className="px-4 py-3 text-right">Price</th>
+            <th className="px-4 py-3 text-right">Daily</th>
+            <th className="px-4 py-3 text-right">Allocation</th>
+            <th className="px-4 py-3 text-right">P/L</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-900/60">
+          {holdings.map((holding) => (
+            <tr key={holding.symbol}>
+              <td className="whitespace-nowrap px-4 py-3">
+                <div className="flex flex-col">
+                  <span className="font-semibold text-white">{holding.symbol}</span>
+                  <span className="text-xs text-slate-500">{holding.name}</span>
+                </div>
+              </td>
+              <td className="whitespace-nowrap px-4 py-3 text-right">{holding.price}</td>
+              <td className={`whitespace-nowrap px-4 py-3 text-right font-semibold ${
+                holding.change.startsWith("-") ? "text-rose-300" : "text-emerald-300"
+              }`}>
+                {holding.change}
+              </td>
+              <td className="whitespace-nowrap px-4 py-3 text-right">{holding.allocation}</td>
+              <td className={`whitespace-nowrap px-4 py-3 text-right font-semibold ${
+                holding.pnl.startsWith("-") ? "text-rose-300" : "text-emerald-300"
+              }`}>
+                {holding.pnl}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </article>
+</section>
 
         <section className="rounded-3xl border border-slate-900/70 bg-slate-950/80 p-6 shadow-lg shadow-blue-900/20">
           <header className="flex items-center justify-between">
@@ -782,6 +1032,189 @@ export default function InvestmentsPage() {
           </ul>
         </section>
       </div>
+      <AddGoalModal
+        isOpen={isAddGoalOpen}
+        onClose={closeAddGoalModal}
+        onSubmit={handleSubmitGoal}
+        formState={goalForm}
+        onChange={handleGoalFormChange}
+        isSubmitting={isSavingGoal}
+        errorMessage={goalFormError}
+      />
     </DashboardLayout>
+  );
+}
+
+function AddGoalModal({
+  isOpen,
+  onClose,
+  onSubmit,
+  formState,
+  onChange,
+  isSubmitting,
+  errorMessage,
+}) {
+  if (!isOpen) {
+    return null;
+  }
+
+  const handleOverlayClick = (event) => {
+    if (event.target === event.currentTarget && !isSubmitting) {
+      onClose();
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-sm"
+      onClick={handleOverlayClick}
+    >
+      <div className="w-full max-w-lg rounded-3xl border border-slate-900/70 bg-slate-950/90 p-6 shadow-2xl shadow-emerald-900/30">
+        <header className="flex items-start justify-between">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.4em] text-emerald-200/70">New goal</p>
+            <h3 className="mt-2 text-xl font-semibold text-white">Add an investing milestone</h3>
+            <p className="mt-2 text-xs text-slate-400">
+              Set a target amount and timeline to track progress inside your portfolio.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="rounded-full border border-slate-900/60 bg-slate-950/60 p-2 text-slate-300 transition hover:border-rose-500/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={onClose}
+            disabled={isSubmitting}
+            aria-label="Close add goal modal"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </header>
+
+        <form className="mt-6 space-y-5" onSubmit={onSubmit}>
+          <div>
+            <label className="block text-xs uppercase tracking-[0.3em] text-slate-500" htmlFor="goal-name">
+              Goal name
+            </label>
+            <input
+              id="goal-name"
+              type="text"
+              value={formState.name}
+              onChange={(event) => onChange("name", event.target.value)}
+              className="mt-2 w-full rounded-2xl border border-slate-900/60 bg-slate-950/70 px-3 py-2 text-sm text-white focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+              placeholder="E.g. Build emergency fund"
+              maxLength={255}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs uppercase tracking-[0.3em] text-slate-500" htmlFor="goal-description">
+              Description (optional)
+            </label>
+            <textarea
+              id="goal-description"
+              value={formState.description}
+              onChange={(event) => onChange("description", event.target.value)}
+              className="mt-2 h-24 w-full rounded-2xl border border-slate-900/60 bg-slate-950/70 px-3 py-2 text-sm text-white focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+              placeholder="Add context or notes for this goal"
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="block text-xs uppercase tracking-[0.3em] text-slate-500" htmlFor="goal-target-amount">
+                Target amount
+              </label>
+              <input
+                id="goal-target-amount"
+                type="number"
+                min="0"
+                step="0.01"
+                value={formState.targetAmount}
+                onChange={(event) => onChange("targetAmount", event.target.value)}
+                className="mt-2 w-full rounded-2xl border border-slate-900/60 bg-slate-950/70 px-3 py-2 text-sm text-white focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                placeholder="5000"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs uppercase tracking-[0.3em] text-slate-500" htmlFor="goal-target-date">
+                Target date
+              </label>
+              <input
+                id="goal-target-date"
+                type="date"
+                value={formState.targetDate}
+                onChange={(event) => onChange("targetDate", event.target.value)}
+                className="mt-2 w-full rounded-2xl border border-slate-900/60 bg-slate-950/70 px-3 py-2 text-sm text-white focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="block text-xs uppercase tracking-[0.3em] text-slate-500" htmlFor="goal-priority">
+                Priority
+              </label>
+              <select
+                id="goal-priority"
+                value={formState.priority}
+                onChange={(event) => onChange("priority", event.target.value)}
+                className="mt-2 w-full rounded-2xl border border-slate-900/60 bg-slate-950/70 px-3 py-2 text-sm text-white focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+              >
+                {[1, 2, 3, 4, 5].map((option) => (
+                  <option key={option} value={option}>
+                    {option} — {option === 1 ? "Highest" : option === 5 ? "Lowest" : "Medium"} priority
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs uppercase tracking-[0.3em] text-slate-500" htmlFor="goal-status">
+                Status
+              </label>
+              <select
+                id="goal-status"
+                value={formState.status}
+                onChange={(event) => onChange("status", event.target.value)}
+                className="mt-2 w-full rounded-2xl border border-slate-900/60 bg-slate-950/70 px-3 py-2 text-sm text-white focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+              >
+                {goalStatusOptions.map((status) => (
+                  <option key={status} value={status}>
+                    {status.charAt(0).toUpperCase() + status.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {errorMessage ? (
+            <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+              {errorMessage}
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="rounded-full border border-slate-900/60 bg-slate-950/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-300 transition hover:border-slate-500/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-500 to-blue-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white shadow transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isSubmitting ? "Saving…" : "Save goal"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }

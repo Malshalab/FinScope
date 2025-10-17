@@ -2,10 +2,12 @@ from datetime import datetime
 
 from decimal import Decimal
 
-from sqlalchemy import Column, DateTime, Integer, String, func, DECIMAL, ForeignKey
+from sqlalchemy import Column, DateTime, Integer, String, func, DECIMAL, ForeignKey, Enum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .session import Base
+
+GoalStatus = Enum("active", "paused", "achieved", "cancelled", name="goal_status")
 
 
 class User(Base):
@@ -18,6 +20,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
     transactions = relationship("Transactions", back_populates="user", cascade="all, delete")
+    goals = relationship("Goal", back_populates="user", cascade="all, delete-orphan")
 
 
 class Transactions(Base):
@@ -36,3 +39,32 @@ class Transactions(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
 
     user = relationship("User", back_populates="transactions")
+
+class Goal(Base):
+    __tablename__ = "goals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(String)
+
+    target_amount: Mapped[Decimal] = mapped_column(DECIMAL(18, 2), nullable=False)
+
+    # Use Date unless you truly need a time-of-day
+    target_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=3)  # 1=high … 5=low
+    status: Mapped[str] = mapped_column(GoalStatus, nullable=False, default="active")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user = relationship("User", back_populates="goals")
