@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:16
+    container_name: fimscope-db
+    environment:
+      POSTGRES_USER: fscope
+      POSTGRES_PASSWORD: fscope_pw
+      POSTGRES_DB: fscope
+    ports:
+      - "5433:5432"   # host:container
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata:

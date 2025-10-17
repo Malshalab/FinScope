@@ -2,23 +2,34 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+### Frontend (Next.js)
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to view the UI. Edit files under `src/` and the page auto-updates.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+### Backend (FastAPI)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Create a virtual environment and install dependencies:
+
+   ```bash
+   cd services/backend
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+2. Start the API server:
+
+   ```bash
+   uvicorn services.backend.main:app --reload
+   ```
+
+Point your HTTP client at [http://localhost:8000](http://localhost:8000). FastAPI routes live under `services/backend/routers`.
+
+> If your editor reports missing imports such as `pydantic`, ensure it is using the `.venv` interpreter created above.
 
 ## Learn More
 

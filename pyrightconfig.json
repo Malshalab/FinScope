@@ -1,0 +1,5 @@
+{
+  "venvPath": "services/backend",
+  "venv": ".venv",
+  "reportMissingImports": true
+}
